@@ -202,41 +202,24 @@
     line-height: 1.25;
   }
 
-  /* ── GREEN CLOUD AURA ── */
+  /* ── GREEN BOTTOM GRADIENT (estilo Gemini) ── */
   #cloud-aura {
     position: absolute;
-    bottom: 72px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 340px;
-    height: 220px;
+    bottom: 0; left: 0; right: 0;
+    height: 280px;
+    background: linear-gradient(to top,
+      rgba(74,158,122,0.16) 0%,
+      rgba(74,158,122,0.08) 45%,
+      rgba(74,158,122,0) 100%);
     pointer-events: none;
     z-index: 1;
-  }
-  #cloud-aura .blob {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(55px);
     opacity: 0;
-  }
-  #cloud-aura .b1 {
-    width: 260px; height: 140px;
-    background: radial-gradient(ellipse, rgba(42,120,80,0.55) 0%, transparent 70%);
-    bottom: 20px; left: 50%; transform: translateX(-50%);
-    animation: cloud-entrance 3.2s cubic-bezier(.4,0,.6,1) forwards;
-  }
-  #cloud-aura .b2 {
-    width: 180px; height: 100px;
-    background: radial-gradient(ellipse, rgba(60,160,100,0.3) 0%, transparent 70%);
-    bottom: 30px; left: 50%; transform: translateX(-50%);
-    animation: cloud-entrance 3.2s cubic-bezier(.4,0,.6,1) 0.15s forwards;
+    animation: cloud-entrance 1.4s ease-out forwards;
   }
 
   @keyframes cloud-entrance {
-    0%   { opacity: 0; transform: translateX(-50%) translateY(30px); }
-    18%  { opacity: 1; transform: translateX(-50%) translateY(0px); }
-    72%  { opacity: 0.9; transform: translateX(-50%) translateY(0px); }
-    100% { opacity: 0; transform: translateX(-50%) translateY(60px); }
+    0%   { opacity: 0; }
+    100% { opacity: 1; }
   }
 
   /* ── MESSAGES ── */
@@ -318,9 +301,9 @@
   .aurora-side {
     position: fixed;
     top: 0; bottom: 0;
-    width: 140px;
+    width: 90px;
     pointer-events: none;
-    z-index: 30;
+    z-index: 6;
     opacity: 0;
     transition: opacity 0.35s ease;
   }
@@ -329,11 +312,11 @@
   .aurora-right { right: 0; }
   .aurora-blob {
     position: absolute;
-    left: -60%; right: -60%;
-    height: 30%;
-    background: radial-gradient(ellipse at center, rgba(90,184,138,0.65) 0%, rgba(74,158,122,0.25) 45%, rgba(74,158,122,0) 75%);
-    filter: blur(22px);
-    opacity: 0.25;
+    left: -8%; right: -8%;
+    height: 26%;
+    background: radial-gradient(ellipse at center, rgba(90,184,138,0.55) 0%, rgba(74,158,122,0.18) 45%, rgba(74,158,122,0) 75%);
+    filter: blur(14px);
+    opacity: 0.16;
     transform: scaleX(0.25);
     transition: transform 0.09s ease-out, opacity 0.09s ease-out;
   }
@@ -582,10 +565,7 @@
     </div>
   </div>
 
-  <div id="cloud-aura">
-    <div class="blob b1"></div>
-    <div class="blob b2"></div>
-  </div>
+  <div id="cloud-aura"></div>
 
   <div id="aurora-left" class="aurora-side aurora-left">
     <div class="aurora-blob" style="top:0%"></div>
@@ -819,8 +799,8 @@
         for (let i = 0; i < n; i++) {
           const v = data[i * step] || 0;
           const amt = v / 255;
-          const scale = 0.25 + amt * 1.4;
-          const op = 0.25 + amt * 0.7;
+          const scale = 0.25 + amt * 0.65;
+          const op = 0.16 + amt * 0.42;
           auroraBlobsL[i].style.transform = `scaleX(${scale})`;
           auroraBlobsL[i].style.opacity = op;
           auroraBlobsR[i].style.transform = `scaleX(${scale})`;
@@ -839,7 +819,7 @@
     document.getElementById('aurora-left').classList.remove('active');
     document.getElementById('aurora-right').classList.remove('active');
     getAuroraBlobs();
-    auroraBlobsL.concat(auroraBlobsR).forEach(b => { b.style.transform = 'scaleX(0.25)'; b.style.opacity = 0.25; });
+    auroraBlobsL.concat(auroraBlobsR).forEach(b => { b.style.transform = 'scaleX(0.25)'; b.style.opacity = 0.16; });
     if (audioStream) { audioStream.getTracks().forEach(t => t.stop()); audioStream = null; }
     if (audioCtx) { try { audioCtx.close(); } catch(e){} audioCtx = null; }
     analyser = null;
