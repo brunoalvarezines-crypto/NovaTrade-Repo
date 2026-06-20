@@ -208,18 +208,22 @@
     bottom: 0; left: 0; right: 0;
     height: 280px;
     background: linear-gradient(to top,
-      rgba(74,158,122,0.16) 0%,
-      rgba(74,158,122,0.08) 45%,
+      rgba(74,158,122,0.18) 0%,
+      rgba(74,158,122,0.09) 45%,
       rgba(74,158,122,0) 100%);
     pointer-events: none;
     z-index: 1;
     opacity: 0;
-    animation: cloud-entrance 1.4s ease-out forwards;
+    animation: cloud-entrance 4.6s cubic-bezier(.4,0,.2,1) forwards;
   }
 
   @keyframes cloud-entrance {
-    0%   { opacity: 0; }
-    100% { opacity: 1; }
+    0%   { opacity: 0;    transform: translateY(18px); }
+    13%  { opacity: 1;    transform: translateY(0); }
+    38%  { opacity: 0.92; transform: translateY(-4px); }
+    62%  { opacity: 1;    transform: translateY(3px); }
+    85%  { opacity: 1;    transform: translateY(0); }
+    100% { opacity: 0;    transform: translateY(50px); }
   }
 
   /* ── MESSAGES ── */
@@ -244,6 +248,25 @@
     border: 1px solid var(--border);
     border-radius: 18px 4px 18px 18px;
     color: var(--text);
+  }
+
+  .user-img-thumb {
+    max-width: 220px;
+    max-height: 280px;
+    width: auto; height: auto;
+    border-radius: 16px;
+    display: block;
+    object-fit: cover;
+    border: 1px solid var(--border);
+  }
+  .user-file-chip {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--text2);
+    background: var(--surface2); border-radius: 8px;
+    padding: 4px 10px; max-width: 100%;
+  }
+  .user-file-chip span {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
 
   .bot-row { display: flex; gap: 10px; align-items: flex-start; max-width: 88%; }
@@ -594,7 +617,8 @@
         <div id="composer-overlay"></div>
       </div>
       <div id="file-preview" style="display:none; align-items:center; gap:6px; background:var(--surface); border-radius:8px; padding:4px 10px; font-size:11px; color:var(--text2); max-width:130px; overflow:hidden;">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <img id="file-preview-thumb" style="display:none; width:20px; height:20px; border-radius:5px; object-fit:cover; flex-shrink:0;"/>
+        <svg id="file-preview-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         <span id="file-name" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
         <button onclick="clearFile()" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:0;font-size:14px;line-height:1;">×</button>
       </div>
@@ -842,61 +866,107 @@
     committedVoiceText = '';
     interimVoiceText = '';
     manualStop = false;
+    let restartsWithoutResult = 0;
+    let gotAnyResult = false;
 
     input.readOnly = true;
     input.classList.add('voice-drafting');
     overlay.classList.add('active');
     renderComposerOverlay();
 
-    recognition = new SpeechRecognition();
-    recognition.lang = navigator.language || 'es-ES';
-    recognition.interimResults = true;
-    recognition.continuous = true;
-    recognition.maxAlternatives = 1;
+    function createRecognition() {
+      const r = new SpeechRecognition();
+      r.lang = navigator.language || 'es-ES';
+      r.interimResults = true;
+      // En Android Chrome, continuous:true es poco fiable y a veces deja
+      // de entregar resultados sin avisar. Usamos continuous:false y
+      // reiniciamos automáticamente en onend: es el patrón más estable
+      // para que la escucha se sienta "continua" en móvil.
+      r.continuous = false;
+      r.maxAlternatives = 1;
 
-    recognition.onstart = () => {
-      isListening = true;
-      actionBtn.classList.add('mic-active');
-      startAuroraVisualizer();
-    };
+      r.onstart = () => {
+        isListening = true;
+        actionBtn.classList.add('mic-active');
+        if (!audioCtx) startAuroraVisualizer();
+      };
 
-    recognition.onresult = (e) => {
-      let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const chunk = e.results[i][0].transcript;
-        if (e.results[i].isFinal) {
-          committedVoiceText = (committedVoiceText + ' ' + chunk).trim();
-        } else {
-          interim += chunk;
+      r.onresult = (e) => {
+        gotAnyResult = true;
+        restartsWithoutResult = 0;
+        let interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const chunk = e.results[i][0].transcript;
+          if (e.results[i].isFinal) {
+            committedVoiceText = (committedVoiceText + ' ' + chunk).trim();
+          } else {
+            interim += chunk;
+          }
         }
-      }
-      interimVoiceText = interim;
-      renderComposerOverlay();
-    };
+        interimVoiceText = interim;
+        renderComposerOverlay();
+      };
 
-    recognition.onerror = (e) => {
-      if (e.error === 'not-allowed' || e.error === 'audio-capture') {
-        manualStop = true;
-        alert('Permiso de micrófono denegado. Actívalo en la configuración del navegador.');
-      }
-      // otros errores (ej. "no-speech") se ignoran: onend decide si reintenta
-    };
+      r.onerror = (e) => {
+        if (e.error === 'not-allowed' || e.error === 'audio-capture') {
+          manualStop = true;
+          alert('Permiso de micrófono denegado. Actívalo en la configuración del navegador.');
+        }
+        // otros errores (ej. "no-speech", "network") no detienen el ciclo:
+        // onend decide si reintenta. Solo contabilizamos para detectar
+        // un fallo persistente (ver onend).
+      };
 
-    recognition.onend = () => {
-      if (!manualStop) {
-        // Fin inesperado (pausa larga, límite del navegador): reintentar
-        // para que la escucha no se corte sola.
-        try { recognition.start(); return; } catch(e) { /* sigue abajo */ }
-      }
-      isListening = false;
-      actionBtn.classList.remove('mic-active');
-      stopAuroraVisualizer();
-      input.readOnly = false;
-      finalizeVoiceText();
-      recognition = null;
-    };
+      r.onend = () => {
+        if (manualStop) {
+          isListening = false;
+          actionBtn.classList.remove('mic-active');
+          stopAuroraVisualizer();
+          input.readOnly = false;
+          finalizeVoiceText();
+          recognition = null;
+          return;
+        }
+
+        if (!gotAnyResult) {
+          restartsWithoutResult++;
+          if (restartsWithoutResult >= 6) {
+            // Varios reinicios seguidos sin transcribir nada: probablemente
+            // el reconocimiento de voz no está disponible ahora mismo
+            // (sin red, servicio bloqueado, etc.). Avisamos en vez de
+            // dejar la aurora encendida para siempre sin explicación.
+            manualStop = true;
+            isListening = false;
+            actionBtn.classList.remove('mic-active');
+            stopAuroraVisualizer();
+            input.readOnly = false;
+            finalizeVoiceText();
+            recognition = null;
+            alert('No se pudo transcribir la voz. Revisa tu conexión a internet e inténtalo de nuevo.');
+            return;
+          }
+        }
+
+        // Fin esperado de una tanda (pausa breve): reiniciar enseguida
+        // para que la escucha se sienta continua.
+        try {
+          recognition = createRecognition();
+          recognition.start();
+        } catch (err) {
+          isListening = false;
+          actionBtn.classList.remove('mic-active');
+          stopAuroraVisualizer();
+          input.readOnly = false;
+          finalizeVoiceText();
+          recognition = null;
+        }
+      };
+
+      return r;
+    }
 
     try {
+      recognition = createRecognition();
       recognition.start();
     } catch(e) {
       isListening = false;
@@ -929,6 +999,7 @@
 
   let isTyping = false;
   function newChat() {
+    cozeConversationId = null;
     document.getElementById('chat-messages').innerHTML = buildWelcome();
     resetComposer();
     setTimeout(renderLogo, 50);
@@ -944,41 +1015,85 @@
     </div>`;
   }
 
-  function buildPayload(botId, text, fileId, fileIsImage) {
-    const payload = {
-      bot_id: botId,
-      user: 'novatrade_user',
-      stream: false
-    };
-
+  function buildContent(text, fileId, fileIsImage) {
     if (fileId) {
       // Coze exige que el "content" sea un array de Content Objects
-      // cuando el mensaje incluye un archivo. No se puede mandar como
-      // texto plano junto al archivo: hay que combinar ambos en el
-      // mismo objeto de contenido estructurado.
+      // (object_string) cuando el mensaje incluye un archivo.
       const contentObjects = [];
-      if (text) {
-        contentObjects.push({ type: 'text', text: text });
-      }
-      contentObjects.push({
-        type: fileIsImage ? 'image' : 'file',
-        file_id: fileId
-      });
+      if (text) contentObjects.push({ type: 'text', text: text });
+      contentObjects.push({ type: fileIsImage ? 'image' : 'file', file_id: fileId });
+      return { content_type: 'object_string', content: JSON.stringify(contentObjects) };
+    }
+    return { content_type: 'text', content: text };
+  }
 
-      payload.query = text || '';
-      payload.additional_messages = [
-        {
-          role: 'user',
-          type: 'question',
-          content: JSON.stringify(contentObjects),
-          content_type: 'object_string'
-        }
-      ];
-    } else {
-      payload.query = text;
+  // Conversación persistente: mantiene contexto entre mensajes mientras
+  // dure la sesión, igual que harían ChatGPT/Gemini.
+  let cozeConversationId = null;
+
+  // Flujo correcto del API v3 de Coze: crear el chat, esperar a que el
+  // estado pase a 'completed' (polling), y entonces leer los mensajes.
+  async function cozeChat(apiKey, botId, contentType, content) {
+    const createUrl = 'https://api.coze.com/v3/chat' +
+      (cozeConversationId ? ('?conversation_id=' + encodeURIComponent(cozeConversationId)) : '');
+
+    const createRes = await fetch(createUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + apiKey
+      },
+      body: JSON.stringify({
+        bot_id: botId,
+        user_id: 'novatrade_user',
+        stream: false,
+        auto_save_history: true,
+        additional_messages: [
+          { role: 'user', content_type: contentType, content: content }
+        ]
+      })
+    });
+
+    if (!createRes.ok) {
+      const errText = await createRes.text();
+      throw new Error('HTTP ' + createRes.status + ': ' + errText);
+    }
+    const createData = await createRes.json();
+    if (createData.code) {
+      throw new Error(createData.msg || ('Error de Coze (código ' + createData.code + ')'));
     }
 
-    return payload;
+    const conversationId = createData.data.conversation_id;
+    const chatId = createData.data.id;
+    cozeConversationId = conversationId;
+
+    const retrieveUrl = 'https://api.coze.com/v3/chat/retrieve?conversation_id=' +
+      encodeURIComponent(conversationId) + '&chat_id=' + encodeURIComponent(chatId);
+
+    let status = createData.data.status;
+    let tries = 0;
+    while (status !== 'completed' && tries < 40) {
+      await new Promise(r => setTimeout(r, 600));
+      const pollRes = await fetch(retrieveUrl, { headers: { 'Authorization': 'Bearer ' + apiKey } });
+      const pollData = await pollRes.json();
+      status = pollData.data ? pollData.data.status : status;
+      if (status === 'failed') {
+        const errMsg = (pollData.data && pollData.data.last_error && pollData.data.last_error.msg) || 'fallo desconocido';
+        throw new Error('Coze no pudo procesar el mensaje: ' + errMsg);
+      }
+      tries++;
+    }
+    if (status !== 'completed') {
+      throw new Error('Tiempo de espera agotado esperando la respuesta de Coze.');
+    }
+
+    const listUrl = 'https://api.coze.com/v3/chat/message/list?conversation_id=' +
+      encodeURIComponent(conversationId) + '&chat_id=' + encodeURIComponent(chatId);
+    const listRes = await fetch(listUrl, { headers: { 'Authorization': 'Bearer ' + apiKey } });
+    const listData = await listRes.json();
+    const messages = listData.data || [];
+    const answer = messages.find(m => m.type === 'answer');
+    return answer ? answer.content : 'Sin respuesta del agente.';
   }
 
   // Guarda el último turno enviado, para poder "Regenerar"
@@ -1004,7 +1119,7 @@
     if (!isRegenerate) {
       const w = document.getElementById('welcome');
       if (w) w.remove();
-      appendUser(text, fileToSend ? fileToSend.name : null);
+      appendUser(text, fileToSend || null);
       queryText = text;
       fileIsImage = fileToSend ? /^image\//.test(fileToSend.type) : false;
       resetComposer();
@@ -1039,23 +1154,8 @@
       lastFileId = fileId;
       lastFileIsImage = fileIsImage;
 
-      const res = await fetch('https://api.coze.com/open_api/v2/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + apiKey
-        },
-        body: JSON.stringify(buildPayload(botId, queryText, fileId, fileIsImage))
-      });
-
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error('HTTP ' + res.status + ': ' + err);
-      }
-
-      const data = await res.json();
-      const answer = data.messages && data.messages.find(m => m.type === 'answer');
-      const replyText = (answer && answer.content) ? answer.content : 'Sin respuesta del agente.';
+      const { content_type, content } = buildContent(queryText, fileId, fileIsImage);
+      const replyText = await cozeChat(apiKey, botId, content_type, content);
 
       removeTyping();
       appendBot('<p>' + escHtml(replyText) + '</p>', queryText);
@@ -1071,19 +1171,25 @@
     sendMessage(true);
   }
 
-  function appendUser(text, fileName) {
+  function appendUser(text, file) {
     const msgs = document.getElementById('chat-messages');
     const d = document.createElement('div');
     d.className = 'msg-row user';
-    let fileTag = '';
-    if (fileName) {
-      fileTag = `<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);background:var(--surface2);border-radius:8px;padding:4px 10px;margin-bottom:4px;max-width:100%;">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(fileName)}</span>
-      </div>`;
+    let mediaTag = '';
+    if (file) {
+      const isImg = /^image\//.test(file.type);
+      if (isImg) {
+        const url = URL.createObjectURL(file);
+        mediaTag = `<img src="${url}" class="user-img-thumb" alt="imagen adjunta"/>`;
+      } else {
+        mediaTag = `<div class="user-file-chip">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span>${esc(file.name)}</span>
+        </div>`;
+      }
     }
     const bubble = text ? `<div class="msg-bubble">${esc(text)}</div>` : '';
-    d.innerHTML = fileTag ? `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">${fileTag}${bubble}</div>` : bubble;
+    d.innerHTML = mediaTag ? `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">${mediaTag}${bubble}</div>` : bubble;
     msgs.appendChild(d); scrollDown();
   }
 
@@ -1190,6 +1296,16 @@
     selectedFile = f;
     document.getElementById('file-name').textContent = f.name;
     document.getElementById('file-preview').style.display = 'flex';
+    const thumb = document.getElementById('file-preview-thumb');
+    const icon = document.getElementById('file-preview-icon');
+    if (/^image\//.test(f.type)) {
+      thumb.src = URL.createObjectURL(f);
+      thumb.style.display = 'block';
+      icon.style.display = 'none';
+    } else {
+      thumb.style.display = 'none';
+      icon.style.display = 'block';
+    }
     // Marcar botón + en verde
     document.querySelector('.pill-plus').style.color = 'var(--logo-green)';
     refreshActionMode();
