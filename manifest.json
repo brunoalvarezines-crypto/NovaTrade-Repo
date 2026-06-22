@@ -4,7 +4,7 @@
   "description": "Asistente de trading con IA",
   "start_url": "./novatrade.html",
   "scope": "./",
-  "display": "standalone",
+  "display": "minimal-ui",
   "orientation": "portrait",
   "background_color": "#080c0a",
   "theme_color": "#080c0a",
